@@ -49,13 +49,16 @@ static void wait_for_procs()
     pid_t pid;
     struct user_regs_struct regs;
 
-    while(TRUE)
+    int count = 0;
+
+    while(count < 3)
     {
         pid = waitpid(-1, &status, WUNTRACED);
         sig = WSTOPSIG(status);
 
         if(WIFEXITED(status)) {
-            break;
+            // break;
+            ++count;
         } else if(WIFSTOPPED(status) && sig == (SIGTRAP | 0x80)) {
             ptrace(PTRACE_GETREGS, pid, NULL, &regs);
             // printf("%d was stopped at %llu\n", pid, regs.orig_rax);
