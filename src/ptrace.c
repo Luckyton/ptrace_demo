@@ -11,13 +11,15 @@
 #define FALSE   0
 #define VAR_NUM 1
 
-static void setup(int nvar, char **argv)
+pid_t spid[3];
+
+static void setup(char **argv)
 {
-    pid_t spid[3], tpid, pid;
+    pid_t pid;
     int status;
     unsigned long long orig_rax;
     
-    for(int i = 0; i < nvar; ++i) {
+    for(int i = 0; i < VAR_NUM; ++i) {
         pid = fork();
         if(pid < 0) {
             perror("fork");
@@ -29,8 +31,8 @@ static void setup(int nvar, char **argv)
             pid = waitpid(spid[i], &status, WUNTRACED);
             assert(pid == spid[i]);
             ptrace(PTRACE_SETOPTIONS, spid[i], NULL,
-                    PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEEXIT |
-                    PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACESYSGOOD | PTRACE_O_EXITKILL);
+                    PTRACE_O_TRACEEXEC | PTRACE_O_TRACEEXIT |
+                    PTRACE_O_TRACESYSGOOD | PTRACE_O_EXITKILL);
             ptrace(PTRACE_SYSCALL, spid[i], NULL, NULL);
             waitpid(spid[i], &status, WUNTRACED);
             orig_rax = ptrace(PTRACE_PEEKUSER, spid[i], 8 * 15, NULL);
@@ -38,7 +40,7 @@ static void setup(int nvar, char **argv)
         }
     }
 
-    for(int i = 0; i < nvar; ++i) {
+    for(int i = 0; i < VAR_NUM; ++i) {
         ptrace(PTRACE_SYSCALL, spid[i], NULL, NULL);
     }
 }
@@ -49,28 +51,44 @@ static void wait_for_procs()
     pid_t pid;
     struct user_regs_struct regs;
 
+    // for(int count = 0; count < VAR_NUM; )
     int count = 0;
-
-    while(count < 3)
+    while (TRUE)
     {
+        // printf("%d\n", count);
+
         pid = waitpid(-1, &status, WUNTRACED);
         sig = WSTOPSIG(status);
 
+        //count = (count + 1) % VAR_NUM;
+
         if(WIFEXITED(status)) {
             // break;
-            ++count;
+            ++ count;
+            if(count == 2) {
+                break;
+            }
         } else if(WIFSTOPPED(status) && sig == (SIGTRAP | 0x80)) {
             ptrace(PTRACE_GETREGS, pid, NULL, &regs);
-            // printf("%d was stopped at %llu\n", pid, regs.orig_rax);
+            printf("%d was stopped at %llu, fork : %d, vfork : %d, clone : %d\n", 
+                        pid, regs.orig_rax, __NR_fork, __NR_vfork, __NR_clone);
         }
-        ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
+        /**
+        if(count == 0) {
+            // ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
+            for(int i = 0; i < VAR_NUM; ++i) {
+                ptrace(PTRACE_SYSCALL, spid[i], NULL, NULL);
+            }
+        }
+        **/
+       ptrace(PTRACE_SYSCALL, spid[0], NULL, NULL);
     }
+    
 }
 
 int main(int argc, char *argv[])
 {
-
-    setup(3, argv);
+    setup(argv);
     wait_for_procs();
 
     return 0;
